@@ -1,14 +1,5 @@
-# Guards the QDMI driver's provider profiles (drivers/qdmi_profiles.py).
-#
-# The driver keeps QDMI's session and job lifecycle and asks a per-provider
-# profile for the vendor-defined parts: how a session opens and from which
-# settings, which program format a job takes, what the CUSTOM slots mean,
-# and how counts are keyed. The IQM profile is the driver's behavior from
-# before profiles existed, so these tests pin that behavior down: the same
-# registration, the same open_device call, the same IQM_JSON submission.
-#
-# The device libraries and mqt.core are stood in for through sys.modules, so
-# no qiskit, iqm-qdmi or mqt-core install is needed.
+# QFw delegates session opening to the packaged MQT Core-backed adapters.
+# The remaining profiles carry QFw settings, policy and legacy output handling.
 
 import pathlib
 import sys
@@ -45,14 +36,6 @@ def test_an_unknown_provider_fails_when_the_driver_is_built():
 
 # --- the IQM profile: the session opens as it did before ---------------------
 
-class _Definition:
-	# Stands in for mqt.core.qdmi.driver.DeviceDefinition.
-	def __init__(self, device_id, library_path, prefix):
-		self.device_id = device_id
-		self.library_path = library_path
-		self.prefix = prefix
-
-
 def _module(name, **attrs):
 	module = types.ModuleType(name)
 	for key, value in attrs.items():
@@ -60,61 +43,25 @@ def _module(name, **attrs):
 	return module
 
 
-def _install_mqt_driver(monkeypatch, opened):
-	# mqt.core.qdmi.driver with a recording open_device. Returns the list the
-	# registrations land in.
-	registered = []
-
-	def register_device_if_absent(definition):
-		registered.append(definition)
-		return True
-
-	def open_device(device_id, **kwargs):
-		opened.append((device_id, kwargs))
-		return "device-handle"
-
-	monkeypatch.setitem(sys.modules, "mqt", _module("mqt"))
-	monkeypatch.setitem(sys.modules, "mqt.core", _module("mqt.core"))
-	monkeypatch.setitem(sys.modules, "mqt.core.qdmi", _module("mqt.core.qdmi"))
-	monkeypatch.setitem(sys.modules, "mqt.core.qdmi.driver", _module(
-		"mqt.core.qdmi.driver",
-		DeviceDefinition=_Definition,
-		register_device_if_absent=register_device_if_absent,
-		open_device=open_device))
-	return registered
-
-
-def _install_iqm_qdmi(monkeypatch):
-	monkeypatch.setitem(sys.modules, "iqm", _module("iqm"))
-	monkeypatch.setitem(sys.modules, "iqm.qdmi", _module(
-		"iqm.qdmi",
-		IQM_QDMI_DEVICE_ID="iqm.default",
-		IQM_QDMI_LIBRARY_PATH="/opt/libiqm-qdmi.so",
-		IQM_QDMI_PREFIX="IQM"))
-
-
-def test_the_iqm_session_opens_as_it_did_before(monkeypatch):
+def test_the_iqm_session_uses_the_packaged_backend(monkeypatch):
 	monkeypatch.setenv("QFW_QC_URL", "https://qc.example.org/")
 	monkeypatch.setenv("QFW_API_KEY", "secret")
 	opened = []
-	registered = _install_mqt_driver(monkeypatch, opened)
-	_install_iqm_qdmi(monkeypatch)
+
+	def IQMBackend(**kwargs):
+		opened.append(kwargs)
+		return types.SimpleNamespace(device="device-handle")
+
+	monkeypatch.setitem(sys.modules, "iqm.qdmi.qiskit", _module(
+		"iqm.qdmi.qiskit", IQMBackend=IQMBackend))
 	driver = QdmiDriver({
 		"provider": "iqm", "id": "ornl-iqm-20q",
 		"provider_device_id": "default"})
 
 	assert driver._device() == "device-handle"
-
-	assert [(d.device_id, d.library_path, d.prefix) for d in registered] == [
-		("iqm.default", "/opt/libiqm-qdmi.so", "IQM")]
-	# The trailing slash is stripped, the token rides in TOKEN and the
-	# quantum computer alias in CUSTOM2, as iqm.qdmi.qiskit does.
-	assert opened == [("iqm.default", {
+	assert opened == [{
 		"base_url": "https://qc.example.org",
-		"token": "secret",
-		"custom2": "default",
-	})]
-	# The session is opened once and cached.
+		"token": "secret", "qc_alias": "default"}]
 	assert driver._device() == "device-handle"
 	assert len(opened) == 1
 
@@ -136,12 +83,11 @@ def test_the_iqm_profile_names_the_missing_credential(monkeypatch):
 def test_a_missing_device_library_names_its_package(monkeypatch):
 	monkeypatch.setenv("QFW_QC_URL", "https://qc.example.org/")
 	monkeypatch.setenv("QFW_API_KEY", "secret")
-	_install_mqt_driver(monkeypatch, [])
 	# A None entry makes `import iqm` fail the way an absent package does.
 	monkeypatch.setitem(sys.modules, "iqm", None)
-	monkeypatch.setitem(sys.modules, "iqm.qdmi", None)
+	monkeypatch.setitem(sys.modules, "iqm.qdmi.qiskit", None)
 
-	with pytest.raises(DEFwExecutionError, match="Install iqm-qdmi"):
+	with pytest.raises(DEFwExecutionError, match="iqm-qdmi"):
 		QdmiDriver({"provider": "iqm"})._device()
 
 
@@ -399,3 +345,27 @@ def test_a_device_record_carries_the_profile_technology():
 
 	assert with_technology["device"]["technology"] == "simulator"
 	assert "technology" not in without["device"]
+
+
+def test_topology_and_calibration_share_three_qubit_loci():
+	sites = [types.SimpleNamespace(name=lambda i=i: str(i)) for i in range(3)]
+	queried = []
+
+	def fidelity(*, sites):
+		queried.append(tuple(site.name() for site in sites))
+		return 0.9
+
+	op = types.SimpleNamespace(
+		name=lambda: "ccnot", qubits_num=lambda: 3,
+		sites=lambda: sites, fidelity=fidelity)
+	device = types.SimpleNamespace(operations=lambda: [op])
+	assert fomac_normalize._operations(device) == {"ccnot": [["0", "1", "2"]]}
+	assert fomac_normalize._operation_metrics(device) == [{
+		"operation": "ccnot", "locus": ["0", "1", "2"], "fidelity": 0.9}]
+	assert queried == [("0", "1", "2")]
+
+
+def test_incomplete_site_tuples_are_rejected():
+	op = types.SimpleNamespace(qubits_num=lambda: 3, sites=lambda: [0, 1])
+	with pytest.raises(ValueError, match="incomplete"):
+		fomac_normalize._operation_loci(op)
