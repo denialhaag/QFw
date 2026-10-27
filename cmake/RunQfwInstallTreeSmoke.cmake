@@ -198,6 +198,8 @@ endif()
 foreach(example_file
 		examples/README.md
 		examples/qfw_example_common.sh
+		examples/qfw_garnet_mock_creds.json.example
+		examples/qfw_garnet_mock_device_access.yaml
 		examples/qfw_mpi_smoke.sh
 		examples/qfw_mpi_smoke_services.yaml
 		examples/qfw_pulser.sh
