@@ -289,6 +289,8 @@ qfw_example_setup_backend_service() {
 				local site_config
 				site_config="$(qfw_example_make_site_config \
 					"${QFW_EXAMPLE_DEVICE_ACCESS_CONFIG}")" || return $?
+				# Recorded so qfw_example_finish removes it.
+				QFW_EXAMPLE_SITE_CONFIG="${site_config}"
 				setup_args+=(--site-config "${site_config}")
 			fi
 			qfw_example_setup "${setup_args[@]}"
