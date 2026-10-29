@@ -5,20 +5,3 @@
 # IMPORTANT: Please do not remove this file even if there are no
 # remaining overrides: every build passes --override and will fail
 # if this file is missing.
-
-# pennylane-qiskit 0.45.0 declares qiskit<=2.3.0, but MQT requires qiskit 2.5.
-# pennylane-qiskit 0.45.0 appears to work with 2.5, so we've pinned it in
-# setup/requirements.txt and added this override here. Without this override,
-# resolution will fail outright: pennylane-qiskit 0.45.0 caps qiskit at <=2.3.0,
-# which conflicts with the qiskit==2.5.2 pin.
-#
-# When pennylane-qiskit is updated to use the newer version of qiskit
-# (maybe with this PR https://github.com/PennyLaneAI/pennylane-qiskit/pull/719)
-# you can drop this override line and the pinned version in setup/requirements.txt,
-# but keep this file.
-#
-# Why is '[qasm3-import]' added to this requirement?
-# An override replaces the whole requirement, extras included. mqt-core[qiskit]
-# and iqm-qdmi[qiskit] ask for qiskit[qasm3-import], so the extra is repeated
-# here to keep qiskit-qasm3-import and openqasm3 installed.
-qiskit[qasm3-import]==2.5.2
