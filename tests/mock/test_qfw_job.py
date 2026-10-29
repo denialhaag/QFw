@@ -7,6 +7,7 @@ import pytest
 from tests.mock.fakes import (
 	FakeEventAPI,
 	FakeQPM,
+	FakeRuntime,
 	FakeSlurmDriver,
 	make_result_event,
 )
@@ -586,3 +587,196 @@ def test_qfw_job_sends_gzipped_qpy_when_the_qpm_declares_it(monkeypatch):
 	assert gzip.decompress(
 		base64.b64decode(payload["circuit"]["data"])) == b"QPY16"
 	assert "qasm" not in payload
+
+
+# --- param_values / compilation_options passthrough --------------------------
+
+PASSTHROUGH_PARAM_VALUES = {"th[0]": 0.1, "th[1]": 0.2}
+PASSTHROUGH_COMPILATION_OPTIONS = {"optimization_level": 1}
+
+
+def _submit_with_options(monkeypatch, **options):
+	import qfw_qiskit.qfw_job as qfw_job
+
+	_stub_qasm(monkeypatch)
+	fake_qpm = FakeQPM(cids=["cid-passthrough"])
+	circuit = qfw_job.QuantumCircuit(1, name="passthrough")
+	job = qfw_job.QFwJob(
+		FakeBackend(), fake_qpm, FakeEventAPI(), circuit,
+		_driver_options(shots=4, **options))
+	job.submit()
+	return fake_qpm.submitted_payloads[0]
+
+
+def test_qfw_job_forwards_param_values_and_compilation_options(monkeypatch):
+	payload = _submit_with_options(
+		monkeypatch,
+		param_values=PASSTHROUGH_PARAM_VALUES,
+		compilation_options=PASSTHROUGH_COMPILATION_OPTIONS)
+
+	assert payload["param_values"] == PASSTHROUGH_PARAM_VALUES
+	assert payload["compilation_options"] == PASSTHROUGH_COMPILATION_OPTIONS
+
+
+def test_qfw_job_forwards_each_passthrough_option_on_its_own(monkeypatch):
+	only_params = _submit_with_options(
+		monkeypatch, param_values=PASSTHROUGH_PARAM_VALUES)
+	assert only_params["param_values"] == PASSTHROUGH_PARAM_VALUES
+	assert "compilation_options" not in only_params
+
+	only_compile = _submit_with_options(
+		monkeypatch, compilation_options=PASSTHROUGH_COMPILATION_OPTIONS)
+	assert only_compile["compilation_options"] == \
+		PASSTHROUGH_COMPILATION_OPTIONS
+	assert "param_values" not in only_compile
+
+
+def test_qfw_job_leaves_passthrough_options_out_when_unset(monkeypatch):
+	payload = _submit_with_options(monkeypatch)
+	assert "param_values" not in payload
+	assert "compilation_options" not in payload
+
+
+def test_qfw_job_leaves_passthrough_options_out_when_none(monkeypatch):
+	payload = _submit_with_options(
+		monkeypatch, param_values=None, compilation_options=None)
+	assert "param_values" not in payload
+	assert "compilation_options" not in payload
+
+
+def test_qfw_job_forwards_falsy_passthrough_values(monkeypatch):
+	# Only None means "not set": an empty dict is still the caller's value.
+	payload = _submit_with_options(
+		monkeypatch, param_values={}, compilation_options={})
+	assert payload["param_values"] == {}
+	assert payload["compilation_options"] == {}
+
+
+class _NamedParameter:
+	# Stands in for a qiskit Parameter or ParameterVectorElement: hashable
+	# and carrying a name, but not a str.
+	def __init__(self, name):
+		self.name = name
+
+
+def test_qfw_job_keys_param_values_by_parameter_name(monkeypatch):
+	payload = _submit_with_options(
+		monkeypatch,
+		param_values={
+			_NamedParameter("th[0]"): 0.1,
+			_NamedParameter("th[1]"): 0.2,
+		})
+
+	assert payload["param_values"] == {"th[0]": 0.1, "th[1]": 0.2}
+	assert all(type(key) is str for key in payload["param_values"])
+
+
+def test_qfw_job_accepts_mixed_name_and_parameter_keys(monkeypatch):
+	payload = _submit_with_options(
+		monkeypatch,
+		param_values={"a": 1.0, _NamedParameter("b"): 2.0})
+
+	assert payload["param_values"] == {"a": 1.0, "b": 2.0}
+
+
+def test_qfw_job_rejects_param_values_that_is_not_a_mapping(monkeypatch):
+	import qfw_qiskit.qfw_job as qfw_job
+
+	with pytest.raises(qfw_job.DEFwError, match="mapping"):
+		_submit_with_options(monkeypatch, param_values=[0.1, 0.2])
+
+
+def test_qfw_job_rejects_param_values_with_duplicate_names(monkeypatch):
+	import qfw_qiskit.qfw_job as qfw_job
+
+	with pytest.raises(qfw_job.DEFwError, match="more than once"):
+		_submit_with_options(
+			monkeypatch,
+			param_values={"th[0]": 0.1, _NamedParameter("th[0]"): 0.2})
+
+
+def test_qfw_job_rejects_param_values_keys_without_a_name(monkeypatch):
+	import qfw_qiskit.qfw_job as qfw_job
+
+	with pytest.raises(qfw_job.DEFwError, match="keys must be"):
+		_submit_with_options(monkeypatch, param_values={0: 0.1})
+
+
+def test_qfw_job_validates_param_values_before_serializing_the_circuit(
+		monkeypatch):
+	import qfw_qiskit.qfw_job as qfw_job
+
+	def must_not_run(*args, **kwargs):
+		raise AssertionError("the circuit was serialized first")
+
+	monkeypatch.setattr(qfw_job, "encode_qiskit_circuit", must_not_run)
+
+	with pytest.raises(qfw_job.DEFwError, match="mapping"):
+		_submit_with_options(monkeypatch, param_values=[0.1])
+
+
+def test_qfw_job_does_not_mutate_the_callers_param_values(monkeypatch):
+	caller_values = {_NamedParameter("th[0]"): 0.1}
+	keys_before = list(caller_values)
+
+	_submit_with_options(monkeypatch, param_values=caller_values)
+
+	assert list(caller_values) == keys_before
+
+
+def _passthrough_backend(monkeypatch):
+	import qfw_qiskit.qfw_simulator as qfw_simulator
+
+	class RecordingJob:
+		def __init__(self, backend, qpm, event_api, circuits, options):
+			self.options = options
+
+		def submit(self):
+			pass
+
+	monkeypatch.setattr(
+		qfw_simulator, "get_qpm",
+		lambda *args, **kwargs: (FakeQPM(), None))
+	monkeypatch.setattr(
+		qfw_simulator, "BaseEventAPI", lambda: FakeEventAPI())
+	monkeypatch.setattr(
+		qfw_simulator, "me", FakeRuntime(endpoint="endpoint-passthrough"))
+	monkeypatch.setattr(qfw_simulator, "QFwJob", RecordingJob)
+	return qfw_simulator.QFwBackend()
+
+
+def test_backend_run_hands_passthrough_options_to_the_job(
+		monkeypatch, capsys):
+	backend = _passthrough_backend(monkeypatch)
+
+	job = backend.run(
+		object(), shots=8,
+		param_values=PASSTHROUGH_PARAM_VALUES,
+		compilation_options=PASSTHROUGH_COMPILATION_OPTIONS)
+
+	assert job.options["param_values"] == PASSTHROUGH_PARAM_VALUES
+	assert job.options["compilation_options"] == \
+		PASSTHROUGH_COMPILATION_OPTIONS
+	assert "is not used by this backend" not in capsys.readouterr().out
+
+
+def test_backend_run_omits_passthrough_options_that_were_not_given(
+		monkeypatch):
+	backend = _passthrough_backend(monkeypatch)
+
+	job = backend.run(object(), shots=8)
+
+	assert "param_values" not in job.options
+	assert "compilation_options" not in job.options
+
+
+def test_backend_run_still_warns_about_unknown_options(monkeypatch, capsys):
+	backend = _passthrough_backend(monkeypatch)
+
+	backend.run(
+		object(), shots=8, param_values=PASSTHROUGH_PARAM_VALUES,
+		bogus_option=1)
+
+	out = capsys.readouterr().out
+	assert "bogus_option" in out
+	assert "param_values" not in out

@@ -70,11 +70,9 @@ export QFW_VENV="$QFW_BASE/qfw-venv"
 export QFW_BUILD="$QFW_BASE/qfw-build"
 export QFW_PREFIX="$QFW_BASE/qfw-install"
 
-python3 -m venv "$QFW_VENV"
+uv venv "$QFW_VENV"
 source "$QFW_VENV/bin/activate"
-python -m pip install --upgrade pip setuptools wheel
-python -m pip install -r "$QFW_SRC/setup/build-requirements.txt"
-python -m pip install -r "$QFW_SRC/setup/requirements.txt"
+uv pip install -r "$QFW_SRC/setup/build-requirements.txt" -r "$QFW_SRC/setup/requirements.txt" --override "$QFW_SRC/setup/overrides.txt"
 
 cmake -S "$QFW_SRC" -B "$QFW_BUILD" \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
@@ -184,14 +182,14 @@ git submodule update --init --recursive
 <details id="python-environment">
 <summary><strong>3. Create A Python Environment</strong></summary>
 
-Create the environment on storage visible to every node that will use it:
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) first if
+it is not already available. Create the environment on storage visible to every
+node that will use it:
 
 ```bash
-python3 -m venv /path/to/qfw-venv
+uv venv /path/to/qfw-venv
 source /path/to/qfw-venv/bin/activate
-python -m pip install --upgrade pip setuptools wheel
-python -m pip install -r setup/build-requirements.txt
-python -m pip install -r setup/requirements.txt
+uv pip install -r setup/build-requirements.txt -r setup/requirements.txt --override setup/overrides.txt
 ```
 
 Install any simulator, application, or hardware-provider Python dependencies
@@ -269,9 +267,10 @@ passed to `qfw-activate --venv`.
 
 QFw environment variables fall into three groups. Operators select the first
 group, activation derives the second group, and `qfw-setup` publishes the third
-group for commands and services in the active run. In these tables, `<prefix>`
-is the installation prefix selected during the build. For the commands above,
-`<prefix>` is `$HOME/.local/qfw`.
+group for commands and services in the active run. The logging and telemetry
+variables form a fourth group that any process may set. In these tables,
+`<prefix>` is the installation prefix selected during the build. For the
+commands above, `<prefix>` is `$HOME/.local/qfw`.
 
 #### Operator Configuration
 
@@ -339,6 +338,45 @@ Example-only controls such as `QFW_RUN_ALL_BACKEND` are documented with their
 wrappers in [examples/README.md](../examples/README.md). Provider credentials
 are service configuration and must not be placed in these application runtime
 variables.
+
+#### Logging And Telemetry
+
+Every QFw process reads these variables once, at start. Set them in the
+environment of the process that should report: the submitting shell for a job,
+which Slurm carries into the job, and the launcher of a site's daemons for its
+QPMs. `qfw-setup` and the service launcher pass the caller's environment to the
+services they start. A running daemon does not pick up a change; restart it.
+
+| Variable | Default | Meaning and use |
+| --- | --- | --- |
+| `QFW_TELEMETRY` | `off` | Telemetry profile: `off`, `file` (OTLP JSON files under `QFW_TELEMETRY_DIR`), or `otlp` (export to a collector). `1`, `yes`, and `true` select `file`. Any other value is an error, so a typo cannot silently switch telemetry on or off. |
+| `QFW_TELEMETRY_ENDPOINT` | Unset | Collector base URL for the `otlp` profile, such as `http://collector:4318`. QFw appends each signal's path. When unset, the exporter reads the standard `OTEL_EXPORTER_OTLP_*` variables. |
+| `QFW_TELEMETRY_SAMPLE` | `off` | Trace sampling: `off`, `always`, or a ratio between 0 and 1. The decision is made once at the trace root and follows the job across services, so a sampled trace is complete. Metrics are exported whenever the profile is not `off`, regardless of this setting. |
+| `QFW_TELEMETRY_TRANSPORT` | `0` | `1` adds the transport spans and histogram: the client's run RPC, the QPM's completion event, and the result's way back. |
+| `QFW_TELEMETRY_LOGS` | `off` | Log lines exported alongside the traces: `error`, `warning`, `info`, `debug`, or `all`. Each line carries the trace and span ids current when it was written. `all` adds DEFw's transport-internal categories. |
+| `QFW_TELEMETRY_VENDOR` | `0` | `1` adds the provider's own phase times (queue, validation, compilation, execution, post-processing) to the execute span and the `qfw.vendor.duration` histogram, where the provider reports them. |
+| `QFW_TELEMETRY_DIR` | `$DEFW_TMP_DIR`, `$TMPDIR`, or `/tmp`, plus `/qfw-telemetry` | Output directory of the `file` profile. Keep it node-local. |
+| `OTEL_METRIC_EXPORT_INTERVAL` | `10000` | Milliseconds between metric exports. A standard OpenTelemetry variable; the SDK's own default is `60000`. |
+| `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE` | `cumulative` (SDK default) | A standard OpenTelemetry variable. `delta` makes each export carry only what happened since the previous one, which suits short-lived clients. |
+| `DEFW_LOG_LEVEL` | `error` | DEFw runtime log level: `error`, `debug`, `message`, or `all`. An unrecognized value falls back to `error`. |
+| `DEFW_PY_LOGLEVEL` | `critical` for applications and the directory service, `debug,DEFW_ALL` for QPM services | Python logging selection for DEFw's per-process log file: comma-separated standard level names and DEFw categories (`DEFW_CORE`, `DEFW_WORKER`, `DEFW_SERVICE`, `DEFW_APP`, `DEFW_RPC`, `DEFW_STACKTRACE`, `DEFW_ALL`). This selects what the file keeps; `QFW_TELEMETRY_LOGS` selects what is exported, and QFw's own loggers export at that level whatever this is set to. |
+| `DEFW_LOG_DIR` | The run's log directory | Directory of DEFw's per-process log files. `qfw-setup` and the service launcher point it at the run's log directories; DEFw's own fallback is `/tmp/<agent name>`. |
+
+A service's two DEFw levels can also be set without touching the shared
+environment. The launcher resolves each of them in this order:
+`QFW_SERVICE_<ID>_DEFW_LOG_LEVEL` for one service, where `<ID>` is the service
+name in upper case with every character that is not a letter or a digit
+replaced by `_` (`QFW_SERVICE_FAKE_IQM_DEFW_LOG_LEVEL` for `fake-iqm`); then
+`QFW_SERVICE_DEFW_LOG_LEVEL` for every service; then `DEFW_LOG_LEVEL`; then
+the `log-level` key of the service's manifest entry; then the default.
+`DEFW_PY_LOGLEVEL` follows the same chain with `py-log-level` as the manifest
+key.
+
+The telemetry profiles, the signal tiers, and the measured cost of each setting
+are described in [docs/design/benchmarking.md](design/benchmarking.md). The
+collector, storage, and dashboards that receive the `otlp` profile are
+deployment infrastructure outside QFw; the cluster repository provides them as
+a Compose overlay and as a bare-metal kit.
 
 Activation preserves explicit `QFW_SITE_CONFIG` and `QFW_RUN_BASE_DIR` values.
 Confirm the active paths with:

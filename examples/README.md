@@ -108,6 +108,9 @@ The aggregate runner intentionally excludes `qfw_mpi_smoke.sh`; MPI validation
 has its own placement and task-count contract and remains a separate command.
 The shim smoke test runs only in local mode because it owns a specialized
 service. VQE is skipped for backends without the required statevector result.
+The `ibm-simple` case runs only with `QFW_RUN_ALL_IBM=1`, since it needs access
+to an IBM device. With `--service-mode local` it also needs
+`QFW_IBM_LOCAL_DEVICE_CONFIG`; without it the case is skipped.
 Every selected case must emit a successful terminal wrapper record to pass.
 
 The fake IQM stress fixture is also run separately because it exercises a
@@ -393,3 +396,61 @@ The command does not source state from a service manager run directory.
 
 Long-running site-service startup, application validation, and interruption
 recovery are documented in `docs/recipes`.
+
+### `qfw_ibm_simple.sh`
+
+Runs a simple parameterized 3-qubit qiskit circuit against an IBM device.
+
+The circuit's `param_values` run option is a mapping of parameter name to value.
+Qiskit `Parameter` keys are accepted and converted to their names before the
+job is sent to the QPM.
+
+Variables override:
+
+```text
+QFW_IBM_SHOTS: number of shots per circuit. Default is 64.
+QFW_IBM_LOCAL_DEVICE_CONFIG: path to device access manifest.
+QFW_IBM_DEVICE: IBM device to run the circuit. Default is "ibm-fake-lagos"
+```
+
+Example of how to run it against a site QPM (inside slurm allocation).
+
+```bash
+./qfw_ibm_simple.sh --service-mode site
+```
+
+Example of how to run it against a local QPM. Inside a slurm allocation, the
+reservations the allocation holds (`QFW_RESERVATIONS`) are dropped so the job
+reserves through the local QPM. The device manifest is assumed to be in
+`~/device-access.yaml`:
+
+```bash
+QFW_IBM_LOCAL_DEVICE_CONFIG=~/device-access.yaml ./qfw_ibm_simple.sh
+```
+
+### `qfw_qrmi_ibm.sh`
+
+Local smoke test for IBM devices. No QPM is involved, the QFw Frontend is called
+directly to test the `qrmi_driver` capabilities against an IBM device.
+
+Variables override:
+
+```text
+QFW_IBM_LOCAL_DEVICE_CONFIG: path to device access manifest.
+QFW_IBM_DEVICE: IBM device to test. Default is "ibm-fake-lagos"
+```
+
+Example running it outside a slurm allocation.
+
+```bash
+QFW_IBM_LOCAL_DEVICE_CONFIG=~/device-access.yaml ./qfw_qrmi_ibm.sh
+```
+
+## IQM Garnet Mock
+
+`--backend iqm-garnet-mock` can be used to run examples in local mode against IQM
+Resonance's noiseless 20-qubit Garnet mock API. The templates
+`qfw_garnet_mock_device_access.yaml` and `qfw_garnet_mock_creds.json.example`
+in this directory are used for that. For setup steps, see
+[Run QFw Against the IQM Garnet Mock](../docs/recipes/run-against-iqm-garnet-mock.md).
+

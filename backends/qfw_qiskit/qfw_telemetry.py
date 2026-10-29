@@ -7,7 +7,7 @@
 # get_backend_info, get_device_info, get_dynamic_backend_info,
 # get_calibration_snapshot and get_coupling_graph. This wrapper puts them on
 # the backend as backend.telemetry, with the run context the backend already
-# holds (the shim library, the reservation token) filled in on every call.
+# holds filled in as appropriate for each telemetry call.
 
 
 class QFwTelemetry:
@@ -15,10 +15,10 @@ class QFwTelemetry:
 
 	`api` is the managed telemetry binding from the QPM lookup
 	(qfw_lookup_service.get_qpm_telemetry). `context` is a callable
-	returning the keyword arguments every call carries: `lib`, the shim
-	library the backend would run through, and `token`, the reservation
-	token when there is one. A `lib` passed to a call wins over the
-	context's.
+	returning the backend's telemetry context. The shim library and token
+	are supplied to telemetry calls when present; `reservation_id` is
+	supplied only to `get_backend_info`, whose QPM API accepts it. A `lib`
+	passed to a call wins over the context's.
 	"""
 
 	CALLS = (
@@ -33,8 +33,10 @@ class QFwTelemetry:
 		self._api = api
 		self._context = context
 
-	def _arguments(self, lib, **extra):
+	def _arguments(self, lib, include_reservation=False, **extra):
 		arguments = dict(self._context() if self._context is not None else {})
+		if not include_reservation:
+			arguments.pop("reservation_id", None)
 		if lib is not None:
 			arguments["lib"] = lib
 		arguments.setdefault("lib", None)
@@ -44,7 +46,8 @@ class QFwTelemetry:
 	def get_backend_info(self, lib=None):
 		"""Backend metadata: whether the QPM has device metadata at all, and
 		for the shim the provider's static architecture."""
-		return self._api.get_backend_info(**self._arguments(lib))
+		return self._api.get_backend_info(
+			**self._arguments(lib, include_reservation=True))
 
 	def get_device_info(self, lib=None):
 		"""The device record (qhw-device-v1 from the shim)."""

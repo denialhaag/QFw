@@ -34,7 +34,7 @@ class QPM(UTIL_QPM):
 		info['qfw_backend'] = 'circuit_runner.nwqsim'
 		return info
 
-	def get_backend_info(self, lib=None, token=None):
+	def get_backend_info(self, lib=None, token=None, reservation_id=None):
 		return {
 			'backend': 'nwqsim',
 			'metadata_supported': False,

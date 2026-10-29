@@ -1,3 +1,4 @@
+import atexit
 import os
 import time
 import logging
@@ -9,7 +10,8 @@ from collections import deque
 from qiskit.providers import BackendV2, Options
 
 from .qfw_job import (
-	QFwJob, SHIM_LIB_ENV, normalize_reservation_id, normalize_shim_library)
+	QFwJob, QFW_INFO_PASSTHROUGH_OPTIONS, SHIM_LIB_ENV,
+	normalize_reservation_id, normalize_shim_library)
 from .qfw_metadata import get_qubit_mapping, set_qubit_mapping
 from .qfw_target import (
 	QFW_NUM_QUBITS,
@@ -143,6 +145,7 @@ class QFwBackend(BackendV2):
 		self.options.set_validator("seed_simulator", int)
 		self.options.set_validator("seed", int)
 		self.register_completion_events()
+		atexit.register(self._unregister_completion_events)
 
 	def __copy__(self):
 		return self
@@ -167,8 +170,28 @@ class QFwBackend(BackendV2):
 		if self._qpm_lifecycle_binding is not None:
 			self._qpm_lifecycle_binding.remove_reconnect_listener(
 				self._handle_qpm_reconnect)
+		self._unregister_completion_events()
+		if self._qpm_lifecycle_binding is not None:
 			self._qpm_lifecycle_binding.close()
 		me.exit()
+
+	def _unregister_completion_events(self):
+		with self._event_registration_lock:
+			registration = self._completion_event_registration
+			self._completion_event_registered = False
+			self._completion_event_registration = None
+		self._unregister_registration(registration)
+
+	def _unregister_registration(self, registration):
+		registration_id = (
+			registration.get("registration_id")
+			if isinstance(registration, dict) else None)
+		if registration_id is None:
+			return
+		try:
+			self.qpm.unregister_event_notification(registration_id)
+		except Exception:
+			pass
 
 	def configuration(self):
 		# LEGACY (BackendV1): Return configuration dict for backward compatibility
@@ -211,8 +234,13 @@ class QFwBackend(BackendV2):
 	def _telemetry_context(self):
 		# What every telemetry call carries: the shim library a run would
 		# use, so the device described is the one the circuits reach, and
-		# the reservation token when the run context holds one.
+		# the reservation context when the run context holds one.
 		context = {"lib": self._shim_library()}
+
+		reservation_id = getattr(self.options, "reservation_id", None)
+		if reservation_id is not None:
+			context["reservation_id"] = reservation_id
+
 		token = getattr(self.options, "token", None)
 		if token is not None:
 			context["token"] = token
@@ -302,7 +330,8 @@ class QFwBackend(BackendV2):
 	def run(self, circuits, **kwargs):
 		for kwarg in kwargs:
 			if (not hasattr(self.options, kwarg) and
-				kwarg not in QFW_RUN_CONTEXT_OPTIONS):
+				kwarg not in QFW_RUN_CONTEXT_OPTIONS and
+				kwarg not in QFW_INFO_PASSTHROUGH_OPTIONS):
 				print("Option ", kwarg, " is not used by this backend")
 		options = {
 			"seed_simulator": kwargs.get("seed_simulator", self.options.seed_simulator),
@@ -323,6 +352,9 @@ class QFwBackend(BackendV2):
 		lib = self._shim_library(kwargs.get("lib"))
 		if lib is not None:
 			options["lib"] = lib
+		for key in QFW_INFO_PASSTHROUGH_OPTIONS:
+			if key in kwargs:
+				options[key] = kwargs[key]
 		self._qfw_job = QFwJob(self, self.qpm, self.event_api, circuits, options)
 		self._qfw_job.submit()
 		return self._qfw_job
@@ -341,9 +373,11 @@ class QFwBackend(BackendV2):
 
 	def _handle_qpm_reconnect(self, state):
 		with self._event_registration_lock:
+			previous = self._completion_event_registration
 			self._completion_event_registered = False
 			self._completion_event_registration = None
 		if state.get("same_runtime"):
+			self._unregister_registration(previous)
 			self.register_completion_events()
 
 	def log_statistics(self, res):

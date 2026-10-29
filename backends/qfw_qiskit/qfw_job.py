@@ -2,6 +2,7 @@ import logging
 import uuid
 import time
 import select
+from collections.abc import Mapping
 
 from qiskit import QuantumCircuit
 from qiskit.providers import JobError, JobV1 as Job
@@ -24,6 +25,40 @@ EXECUTION_CONTEXT_KEYS = (
 	"timeout",
 	"cancel_on_timeout",
 )
+
+# Run options forwarded to the QPM through the job's info dict. param_values
+# is keyed by parameter name first (see normalize_param_values).
+QFW_INFO_PASSTHROUGH_OPTIONS = (
+	"param_values",
+	"compilation_options",
+)
+
+
+def normalize_param_values(param_values):
+	"""Key circuit parameter values by parameter name.
+
+	The values travel to the QPM inside an RPC message that DEFw serializes
+	with YAML. A qiskit ParameterVectorElement key cannot survive that round
+	trip, so keys that carry a name (qiskit Parameter objects) are reduced to
+	it and the QPM always receives {name: value}.
+	"""
+	if not isinstance(param_values, Mapping):
+		raise DEFwError(
+			"param_values must be a mapping of parameter name to value, "
+			f"got {type(param_values).__name__}")
+	normalized = {}
+	for key, value in param_values.items():
+		name = getattr(key, "name", key)
+		if not isinstance(name, str):
+			raise DEFwError(
+				"param_values keys must be parameter names or qiskit "
+				f"Parameter objects, got {type(key).__name__}")
+		if name in normalized:
+			raise DEFwError(
+				f"param_values names parameter {name!r} more than once")
+		normalized[name] = value
+	return normalized
+
 
 # The libraries a shim QPM can run a circuit through (svc_lib_qpm).
 SHIM_LIBRARIES = ("qrmi", "qdmi")
@@ -154,6 +189,11 @@ class QFwJob(Job):
 
 	def _run_experiment_async(self, circuit):
 		self.start_time = time.time()
+		# Validate param_values before the circuit is serialized, so a bad
+		# value fails without doing that work first.
+		param_values = self._options.get("param_values")
+		if param_values is not None:
+			param_values = normalize_param_values(param_values)
 		# get num_qubits from experiment
 		num_qubits = circuit.num_qubits
 		# let's form the info object to give to QFw!!
@@ -175,6 +215,11 @@ class QFwJob(Job):
 			info["return_statevector"] = True
 		if self._options.get("lib"):
 			info["lib"] = self._options["lib"]
+		for key in QFW_INFO_PASSTHROUGH_OPTIONS:
+			if self._options.get(key) is not None:
+				info[key] = self._options[key]
+		if param_values is not None:
+			info["param_values"] = param_values
 
 		try:
 			context = self._execution_context()

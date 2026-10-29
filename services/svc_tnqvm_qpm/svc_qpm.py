@@ -32,7 +32,7 @@ class QPM(UTIL_QPM):
 		info['qfw_backend'] = 'circuit_runner.tnqvm'
 		return info
 
-	def get_backend_info(self, lib=None, token=None):
+	def get_backend_info(self, lib=None, token=None, reservation_id=None):
 		return {
 			'backend': 'tnqvm',
 			'metadata_supported': False,

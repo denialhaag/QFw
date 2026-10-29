@@ -252,12 +252,14 @@ install(DIRECTORY examples/
 		PATTERN "*.py"
 		PATTERN "*.yaml"
 		PATTERN "*.yml"
+		PATTERN "*.json.example"
 		PATTERN "__pycache__" EXCLUDE)
 install(PROGRAMS
 	examples/qfw_chem_app.sh
 	examples/qfw_example_common.sh
 	examples/qfw_fake_iqm_stress.sh
 	examples/qfw_ghz.sh
+	examples/qfw_ibm_simple.sh
 	examples/qfw_init_test.sh
 	examples/qfw_iqm_chem_driver.sh
 	examples/qfw_job_stream.sh
@@ -268,6 +270,7 @@ install(PROGRAMS
 	examples/qfw_qiskit_simple.sh
 	examples/qfw_qiskit_simple_w_mqt.sh
 	examples/qfw_qiskit_vqe.sh
+	examples/qfw_qrmi_ibm.sh
 	examples/qfw_run_all.sh
 	examples/qfw_shim_smoke.sh
 	examples/qfw_slurm_driver.sh

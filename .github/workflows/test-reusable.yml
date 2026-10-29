@@ -9,6 +9,7 @@
 #   - ci-mock: pytest tests under tests/mock
 #   - ci-qdmi: released provider adapters
 #   - ci-pulser: the Pulser client against released Pulser
+#   - ci-resolve: the requirements files resolve together with overrides
 #
 # Note: QFw integration tests require a running distributed framework
 # (PRTE, DEFw, QPM services, simulator binaries) and cannot run on standard
@@ -54,6 +55,21 @@ jobs:
         PY
     - name: Test adapters and serialization without provider submission
       run: python -m pytest -q tests/qiskit/test_qdmi_adapters.py tests/qiskit/test_braket_qdmi.py tests/qiskit/test_ibm_qdmi.py
+
+  ci-resolve:
+    name: ci-resolve (requirements resolve)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: astral-sh/setup-uv@v5
+    - name: Resolve the files the build installs, with overrides
+      # Mirrors the uv pip install command in README.md. Resolution only reads
+      # package metadata, so nothing is installed.
+      run: |
+        uv pip compile \
+          --override setup/overrides.txt \
+          setup/build-requirements.txt setup/requirements.txt \
+          -o "$RUNNER_TEMP/resolved.txt"
 
   ci-pulser:
     name: ci-pulser (released Pulser)

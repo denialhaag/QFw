@@ -233,6 +233,27 @@ def test_telemetry_calls_carry_the_shim_library_and_the_token(monkeypatch):
 	]
 
 
+def test_reserved_target_passes_reservation_only_to_backend_info(monkeypatch):
+	info, device, coupling, calibration = iqm_records()
+	telemetry = FakeTelemetryAPI(info, device, coupling, calibration)
+	backend = _backend(
+		monkeypatch, telemetry, provider="shim",
+		qpm_properties={"provider": "shim"})
+	backend.options.reservation_id = 123
+
+	target = backend.target
+
+	assert target is not None
+	assert telemetry.calls == [
+		("get_backend_info", {"lib": None, "reservation_id": 123}),
+		("get_device_info", {"lib": None}),
+		("get_coupling_graph", {
+			"lib": None, "calibration_set_id": None}),
+		("get_calibration_snapshot", {
+			"lib": None, "calibration_set_id": None}),
+	]
+
+
 def test_target_from_device_metadata_has_the_qubits_gates_and_coupling(
 		monkeypatch):
 	# The fake IQM QPM describes its device with plain dicts: a qubit count
