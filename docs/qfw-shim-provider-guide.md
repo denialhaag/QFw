@@ -243,6 +243,9 @@ adapter receives only the credential material it needs.
 For IQM, store each user's API token in the `api_key` field shown above.
 The native IQM service and the shim's QRMI and QDMI paths use the same
 device-access settings and per-user credentials.
+If you don't want to run on actual IQM hardware, the [IQM Garnet mock
+recipe](recipes/run-against-iqm-garnet-mock.md) shows this with IQM Resonance's
+mock API.
 
 ### Amazon Braket
 

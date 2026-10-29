@@ -445,3 +445,12 @@ Example running it outside a slurm allocation.
 ```bash
 QFW_IBM_LOCAL_DEVICE_CONFIG=~/device-access.yaml ./qfw_qrmi_ibm.sh
 ```
+
+## IQM Garnet Mock
+
+`--backend iqm-garnet-mock` can be used to run examples in local mode against IQM
+Resonance's noiseless 20-qubit Garnet mock API. The templates
+`qfw_garnet_mock_device_access.yaml` and `qfw_garnet_mock_creds.json.example`
+in this directory are used for that. For setup steps, see
+[Run QFw Against the IQM Garnet Mock](../docs/recipes/run-against-iqm-garnet-mock.md).
+
