@@ -14,5 +14,5 @@ qfw_example_setup_backend_service "${backend}"
 # Takes number of qubits
 #  ex: test_qiskit_simple_w_mqt.py 10
 qfw_example_srun_with_backend_reservation \
-	"${backend}" qiskit-simple "$1" 1024 1 async_run \
-	"$(qfw_example_path tests/test_qiskit_simple.py)" "$1" "${backend}"
+	"${backend}" qiskit-simple-w-mqt "$1" 1024 1 async_run \
+	"$(qfw_example_path tests/test_qiskit_simple_w_mqt.py)" "$1" "${backend}"

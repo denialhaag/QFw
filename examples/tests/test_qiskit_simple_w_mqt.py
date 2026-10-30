@@ -31,7 +31,7 @@ except Exception:
 if statevector is not None:
 	print(statevector)
 emit_result(
-	"qiskit-simple",
+	"qiskit-simple-w-mqt",
 	parameters={"qubits": nq, "shots": 1024, "backend": backend_name},
 	metrics={
 		"counts": counts,
