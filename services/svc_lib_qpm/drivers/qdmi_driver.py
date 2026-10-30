@@ -62,7 +62,8 @@ class QdmiDriver(BaseDriver):
 		# The settings this resource's session opens with. What they are and
 		# where they come from is the provider's business (qdmi_profiles):
 		# IQM takes a server URL, an API token and a quantum computer alias,
-		# Amazon Braket a device ARN and Region, IBM a backend and instance CRN.
+		# Amazon Braket a device ARN and Region, IBM a backend and instance CRN,
+		# and Pasqal a backend type with native service-account authentication.
 		return self._profile.access(credential)
 
 	@staticmethod
@@ -84,6 +85,7 @@ class QdmiDriver(BaseDriver):
 			credential.get("user"),
 			credential.get("api_key") or credential.get("token"),
 			credential.get("service_crn"),
+			credential.get("project_id"),
 		)
 
 	def evict_reservation(self, reservation_id):
@@ -153,6 +155,9 @@ class QdmiDriver(BaseDriver):
 		# credential, as its circuits do.
 		provider, device_id = self._ids()
 		device = self._device(credential)
+		info = self._profile.backend_info(device)
+		if info is not None:
+			return info
 		topo = fomac_normalize.extract_topology(device)
 		return {
 			"backend": provider,
@@ -194,9 +199,10 @@ class QdmiDriver(BaseDriver):
 
 	def run_circuit(self, circuit):
 		# The circuit arrives in a format this QPM declares, QPY or OpenQASM 2
-		# (see util.circuit_payload). The profile encodes it as the program
-		# its device library takes (IQM_JSON for IQM, OpenQASM 3 for
-		# Amazon Braket and IBM), then it is submitted through MQT Core's
+		# or native Pulser JSON (see util.circuit_payload). The profile encodes
+		# it as the program its device library takes (IQM_JSON for IQM,
+		# OpenQASM 3 for Amazon Braket and IBM, CUSTOM1 for Pasqal), then it
+		# is submitted through MQT Core's
 		# QDMI job interface, polled to completion, and the counts are normalized to
 		# qhw-result-v1 (the same record the QRMI path produces).
 		# The reservation's credential, bound by the QPM controller
@@ -207,8 +213,7 @@ class QdmiDriver(BaseDriver):
 			device = backend.device
 		info = getattr(circuit, "info", None) or {}
 		cid = circuit.get_cid() if hasattr(circuit, "get_cid") else info.get("cid")
-		from util.circuit_payload import qiskit_input
-		source = qiskit_input(info)
+		source = self._profile.circuit_source(info)
 		shots = int(info.get("num_shots", info.get("shots", 1024)))
 		self._profile.check_shots(shots)
 		timeout = self._profile.timeout_seconds(info)
