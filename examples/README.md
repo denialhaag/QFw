@@ -249,6 +249,30 @@ argument is the number of qubits.
 ./qfw_qiskit_simple.sh 4
 ```
 
+### `qfw_qiskit_simple_w_mqt.sh`
+
+Runs the same circuit as `qfw_qiskit_simple.sh`, but first compiles it with the
+MQT compiler.
+
+The argument passed to the script is the number of qubits for the GHZ-style
+circuit.
+
+```bash
+./qfw_qiskit_simple_w_mqt.sh 4
+```
+
+NOTE: This example needs an MQT Core newer than 4.1.1. Until such a release is
+cut, you can install one from source:
+
+```bash
+pip install "mqt-core[qiskit] @ git+https://github.com/munich-quantum-toolkit/core.git@6992bf9e3604a9fbf038f323e9b9b999016eca28"
+```
+
+TODO: After the next release of MQT Core, update
+`setup/qdmi-requirements.txt`, remove the note above, and update the error
+message produced by `QFwBackend.compile` when it raises a `TypeError` (likely
+caused by the MQT Core version).
+
 ### `qfw_ghz.sh`
 
 Runs the GHZ example through either the Qiskit or PennyLane frontend.

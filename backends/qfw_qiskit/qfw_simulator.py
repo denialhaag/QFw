@@ -322,7 +322,22 @@ class QFwBackend(BackendV2):
 			return transpile(circuits, target=self.target, **kwargs)
 		elif compiler == 'mqt':
 			from mqt.core import mlir
-			return mlir.compile_program(circuits, target=self.target, **kwargs)
+			try:
+				return mlir.compile_program(
+					circuits, target=self.target, **kwargs)
+			except TypeError as exc:
+				# MQT Core 4.1.1 and earlier only accept a QDMI device
+				# here, not a Qiskit Target or a sequence of circuits.
+				# TODO: Once setup/qdmi-requirements.txt pins a newer MQT
+				# Core, remove the NOTE in examples/README.md and the
+				# pointer to it in the error message below.
+				raise RuntimeError(
+					"A TypeError was raised while calling MQT Core's "
+					"compile_program. This may have occurred because QFw "
+					"requires a build of MQT Core newer than 4.1.1 when "
+					"using the MQT Core compiler. "
+					"See notes for qfw_qiskit_simple_w_mqt.sh "
+					"in examples/README.md for more information.") from exc
 		else:
 			raise ValueError(
 				f"unknown compiler '{compiler}'; expected 'qiskit' or 'mqt'")
