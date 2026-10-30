@@ -1119,9 +1119,10 @@ from qiskit import transpile
 from qfw_qiskit import QFwBackend
 
 backend = QFwBackend(provider="fake-iqm")
+target = backend.target
 print(backend.target_source)   # device: QFw fake-iqm fake-iqm-20q target
-print(backend.target.num_qubits, backend.target.build_coupling_map())
-isa_circuit = transpile(circuit, target=backend.target)
+print(target.num_qubits, target.build_coupling_map())
+isa_circuit = transpile(circuit, target=target)
 job = backend.run(isa_circuit, shots=100)
 ```
 
