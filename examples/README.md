@@ -265,7 +265,7 @@ NOTE: This example needs an MQT Core newer than 4.1.1. Until such a release is
 cut, you can install one from source:
 
 ```bash
-pip install "mqt-core[qiskit] @ git+https://github.com/munich-quantum-toolkit/core.git@6992bf9e3604a9fbf038f323e9b9b999016eca28"
+uv pip install "mqt-core[qiskit] @ git+https://github.com/munich-quantum-toolkit/core.git@6992bf9e3604a9fbf038f323e9b9b999016eca28"
 ```
 
 TODO: After the next release of MQT Core, update
