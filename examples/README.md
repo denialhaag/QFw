@@ -269,9 +269,8 @@ pip install "mqt-core[qiskit] @ git+https://github.com/munich-quantum-toolkit/co
 ```
 
 TODO: After the next release of MQT Core, update
-`setup/qdmi-requirements.txt`, remove the note above, and update the error
-message produced by `QFwBackend.compile` when it raises a `TypeError` (likely
-caused by the MQT Core version).
+`setup/qdmi-requirements.txt`, remove the note above, and remove the MQT Core
+version check in `QFwBackend.compile`.
 
 ### `qfw_ghz.sh`
 
