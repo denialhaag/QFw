@@ -9,7 +9,7 @@
 from .base_driver import (BaseDriver, JobRecords, next_poll_wait,
 		poll_schedule, reservation_cache_key)
 from .qdmi_profiles import profile_for
-from . import fomac_normalize
+from . import qdmi_normalize
 from defw_exception import DEFwExecutionError
 from util import instrumentation
 import json
@@ -158,30 +158,30 @@ class QdmiDriver(BaseDriver):
 		info = self._profile.backend_info(device)
 		if info is not None:
 			return info
-		topo = fomac_normalize.extract_topology(device)
+		topo = qdmi_normalize.extract_topology(device)
 		return {
 			"backend": provider,
 			"metadata_supported": True,
 			"static_architecture": {},
 			"active_qubits": list(topo.get("qubits") or []),
-			"calibration_set_id": fomac_normalize.calibration_set_id(
+			"calibration_set_id": qdmi_normalize.calibration_set_id(
 				device, self._profile.calibration_set_slot),
-			"qhw_device": fomac_normalize.to_device_record(
+			"qhw_device": qdmi_normalize.to_device_record(
 				topo, provider, device_id,
 				technology=self._profile.technology()),
 		}
 
 	def get_device_info(self):
 		provider, device_id = self._ids()
-		topo = fomac_normalize.extract_topology(self._device())
-		return fomac_normalize.to_device_record(
+		topo = qdmi_normalize.extract_topology(self._device())
+		return qdmi_normalize.to_device_record(
 			topo, provider, device_id,
 			technology=self._profile.technology())
 
 	def get_coupling_graph(self, calibration_set_id=None):
 		provider, device_id = self._ids()
-		topo = fomac_normalize.extract_topology(self._device())
-		return fomac_normalize.to_coupling_record(topo, provider, device_id)
+		topo = qdmi_normalize.extract_topology(self._device())
+		return qdmi_normalize.to_coupling_record(topo, provider, device_id)
 
 	def get_calibration_snapshot(self, calibration_set_id=None):
 		# QDMI exposes the device's live per-qubit coherence (T1/T2) and
@@ -190,10 +190,10 @@ class QdmiDriver(BaseDriver):
 		# one. Selecting a *different* set is still a follow-up: the device
 		# session always reflects the active one, so the argument is a no-op.
 		provider, device_id = self._ids()
-		cal = fomac_normalize.extract_calibration(
+		cal = qdmi_normalize.extract_calibration(
 			self._device(),
 			calibration_set_slot=self._profile.calibration_set_slot)
-		return fomac_normalize.to_calibration_record(cal, provider, device_id)
+		return qdmi_normalize.to_calibration_record(cal, provider, device_id)
 
 	# --- execution: circuit -> provider program -> QDMI submit_job ------
 
@@ -307,7 +307,7 @@ class QdmiDriver(BaseDriver):
 		# where that differs (identity for IQM).
 		counts = self._profile.result_counts(counts, measurement)
 
-		record = fomac_normalize.to_result_record(
+		record = qdmi_normalize.to_result_record(
 			counts, shots, provider, device_id, job_id=job_id,
 			status="completed", queue_position=queue_position)
 		self._jobs.put({

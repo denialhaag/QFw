@@ -1,7 +1,7 @@
 # QFw settings and policy for the MQT Core-backed provider adapters.
 # Imports stay lazy so services can start without a live device or credentials.
 
-from . import fomac_normalize
+from . import qdmi_normalize
 from defw_exception import DEFwExecutionError
 import os
 
@@ -64,7 +64,7 @@ class QdmiProfile:
 	requires = "a QDMI device library"
 	# The QDMI device-property CUSTOM slot that carries the provider's
 	# calibration set identifier, as a mqt.core.qdmi.CustomProperty attribute
-	# name, or None when the provider publishes none. fomac_normalize reads
+	# name, or None when the provider publishes none. qdmi_normalize reads
 	# it; a wrong slot would read some other vendor-defined value as an id.
 	calibration_set_slot = None
 
@@ -236,8 +236,8 @@ class IqmQdmiProfile(QdmiProfile):
 		from util.iqm_transcode import build_iqm_circuit
 		mapping = info.get("iqm_qubit_mapping") or info.get("qubit_mapping")
 		device = backend.device
-		topo = fomac_normalize.extract_topology(device)
-		dynamic = iqm_architecture(topo, fomac_normalize._calibration_set_id(
+		topo = qdmi_normalize.extract_topology(device)
+		dynamic = iqm_architecture(topo, qdmi_normalize._calibration_set_id(
 			device, self.calibration_set_slot))
 		iqm_circuit = build_iqm_circuit(source, dynamic, mapping)
 		return driver._serialize_program(iqm_circuit), "IQM_JSON", None
